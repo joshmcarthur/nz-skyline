@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>NZ Skyline</title>
+    <script src="vendor/aframe.min.js"></script>
+    <script type="text/javascript" src="vendor/ar-threex-location-only.js"></script>
+    <script type="text/javascript" src="vendor/aframe-ar.js"></script>
+  </head>
+  <body>
+    <a-scene
+      vr-mode-ui="enabled: true"
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: true"
+      renderer="antialias: true; alpha: true"
+    >
+      <a-camera gps-new-camera="gpsMinDistance: 5" alert="true"></a-camera>
+    </a-scene>
+
+    <script>
+      let features = [];
+      const markerScale = 50;
+      const textScale = 500;
+
+      function updatePoints(userLocation) {
+        if (!features.length) return;
+
+        const points = filterPointsByBoundingBox(userLocation, 0.125, features); // 0.25 degree is ~ 111km lat, ~ 82km lng, so this is a 27x20km box
+        console.log("Points in range:", points);
+
+        points.forEach((point) => {
+          const { location, name, id, altitude } = point;
+          const [latitude, longitude] = location;
+
+          const compositeMarker = document.createElement("a-entity");
+          const marker = document.createElement("a-sphere");
+          const text = document.createElement("a-text");
+
+          compositeMarker.setAttribute("gps-new-entity-place", { latitude, longitude });
+          compositeMarker.setAttribute("id", id);
+          marker.setAttribute("material", { color: "red" });
+          marker.setAttribute("scale", { x: markerScale, y: markerScale, z: markerScale });
+          marker.setAttribute("position", { x: 0, y: 100, z: 0 });
+
+          text.setAttribute("scale", { x: textScale, y: textScale, z: textScale });
+          text.setAttribute("align", "center");
+          text.setAttribute("value", name);
+          text.setAttribute("look-at", "[gps-new-camera]");
+
+          compositeMarker.appendChild(marker);
+          compositeMarker.appendChild(text);
+
+          document.querySelector("a-scene").appendChild(compositeMarker);
+        });
+      }
+
+      // Function to filter points within a bounding box
+      function filterPointsByBoundingBox(center, boxSize, points) {
+        const halfSize = boxSize / 2;
+        return points.filter((point) => {
+          const [longitude, latitude] = point.location;
+          return (
+            longitude >= center[0] - halfSize &&
+            longitude <= center[0] + halfSize &&
+            latitude >= center[1] - halfSize &&
+            latitude <= center[1] + halfSize
+          );
+        });
+      }
+
+      const registerServiceWorker = async () => {
+        if ("serviceWorker" in navigator) {
+          try {
+            const registration = await navigator.serviceWorker.register("/sw.js", {
+              scope: "/",
+            });
+            if (registration.installing) {
+              console.log("Service worker installing");
+            } else if (registration.waiting) {
+              console.log("Service worker installed");
+            } else if (registration.active) {
+              console.log("Service worker active");
+            }
+          } catch (error) {
+            console.error(`Registration failed with ${error}`);
+          }
+        }
+      };
+
+      registerServiceWorker();
+
+      window.onload = () =>
+        fetch("data/features.json")
+          .then((response) => response.json())
+          .then((data) => (features = data))
+          .then(() => {
+            const el = document.querySelector("[gps-new-camera]");
+            el.addEventListener("gps-camera-update-position", (e) =>
+              updatePoints([e.detail.position.latitude, e.detail.position.longitude])
+            );
+          })
+          .catch((error) => console.error("Error fetching JSON:", error));
+    </script>
+  </body>
+</html>
